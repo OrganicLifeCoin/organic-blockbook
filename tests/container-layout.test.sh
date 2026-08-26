@@ -11,8 +11,14 @@ test -f .dockerignore
 test -f .github/workflows/ci.yml
 test ! -e deploy/source.Dockerfile
 test ! -e build/text
-! rg -q '^tests/?$' .dockerignore
-! rg -q 'packr' api/text.go go.mod
+if rg -q '^tests/?$' .dockerignore; then
+  echo "Container build excludes required tests." >&2
+  exit 1
+fi
+if rg -q 'packr' api/text.go go.mod; then
+  echo "Removed Packr runtime remains in the build." >&2
+  exit 1
+fi
 
 rg -q '^FROM .+ AS builder$' Dockerfile
 rg -q '^USER blockbook$' Dockerfile
@@ -21,7 +27,10 @@ rg -q 'HEALTHCHECK' Dockerfile
 rg -q -- '-datadir=/data' Dockerfile
 rg -q 'COPY --from=builder .*/blockbook' Dockerfile
 rg -q 'COPY --chown=blockbook:blockbook static' Dockerfile
-! rg -q 'COPY .*build/text' Dockerfile
+if rg -q 'COPY .*build/text' Dockerfile; then
+  echo "Container still copies obsolete generated text assets." >&2
+  exit 1
+fi
 rg -q 'go test -tags unittest ./\.\.\.' Dockerfile
 rg -q 'govulncheck@v1\.7\.0 ./\.\.\.' Dockerfile
 rg -q 'ARG GO_VERSION=1\.27\.0' Dockerfile

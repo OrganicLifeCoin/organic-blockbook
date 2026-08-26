@@ -83,14 +83,29 @@ fi
 rg -q 'txindex=1' README.md
 rg -q 'SetReadLimit' server/websocket.go
 rg -q 'SetReadDeadline' server/websocket.go
-! rg -q 'go s\.onRequest' server/websocket.go
+if rg -q 'go s\.onRequest' server/websocket.go; then
+  echo "WebSocket requests can bypass per-connection serialization." >&2
+  exit 1
+fi
 rg -q 'done.*chan struct' server/websocket.go
 rg -q 'enqueueResponse' server/websocket.go
-! rg -q 'close\(c\.out\)' server/websocket.go
-! rg -q '"status": err\.Error\(\)' server/websocket.go
-! rg -q 'RPCLatency\.With\(common\.Labels\{[^}]*"error"' bchain/coins/blockchain.go
+if rg -q 'close\(c\.out\)' server/websocket.go; then
+  echo "WebSocket output channel can still be closed while producers use it." >&2
+  exit 1
+fi
+if rg -q '"status": err\.Error\(\)' server/websocket.go; then
+  echo "WebSocket metrics contain unbounded error labels." >&2
+  exit 1
+fi
+if rg -q 'RPCLatency\.With\(common\.Labels\{[^}]*"error"' bchain/coins/blockchain.go; then
+  echo "RPC metrics contain unbounded error labels." >&2
+  exit 1
+fi
 rg -q 'RPCLatency\.With\(common\.Labels\{[^}]*"status": status' bchain/coins/blockchain.go
-! rg -q 'IndexResyncErrors\.With\(common\.Labels\{[^}]*err\.Error\(\)' db/sync.go
+if rg -q 'IndexResyncErrors\.With\(common\.Labels\{[^}]*err\.Error\(\)' db/sync.go; then
+  echo "Index metrics contain unbounded error labels." >&2
+  exit 1
+fi
 rg -q 'IndexResyncErrors\.With\(common\.Labels\{"status": "error"\}\)' db/sync.go
 rg -q '^const maxAddressesGap = 100$' api/xpub.go
 rg -q '^const outChannelSize = 16$' server/websocket.go
