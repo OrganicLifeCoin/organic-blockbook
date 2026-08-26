@@ -1,0 +1,48 @@
+name: OLC Blockbook checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install repository check tools
+        run: sudo apt-get update && sudo apt-get install -y jq ripgrep shellcheck
+
+      - name: Check runtime configuration
+        run: bash tests/repository-config.test.sh
+
+      - name: Check repository hygiene
+        run: bash tests/repository-hygiene.test.sh
+
+      - name: Check container layout
+        run: bash tests/container-layout.test.sh
+
+      - name: Check shell scripts
+        run: shellcheck deploy/render-blockchainconfig.sh tests/*.test.sh
+
+      - name: Build and test the container
+        run: |
+          docker build \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --tag organic-blockbook:ci .
+
+      - name: Smoke-test the final image
+        run: docker run --rm --entrypoint /app/blockbook organic-blockbook:ci -h >/dev/null 2>&1
+
+      - name: Check the container user
+        run: test "$(docker image inspect organic-blockbook:ci --format '{{.Config.User}}')" = blockbook

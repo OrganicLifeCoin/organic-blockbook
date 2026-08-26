@@ -1,0 +1,8 @@
+OrganicLifeCoin Blockbook
+
+This project derives from Trezor Blockbook, which is licensed under the GNU
+Affero General Public License version 3.
+
+The OrganicLifeCoin parser derives from PIVX-compatible Blockbook work.
+OrganicLifeCoin contributors maintain the OLC network integration, shield
+transaction support, deployment controls, and explorer branding.

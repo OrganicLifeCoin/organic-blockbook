@@ -1,0 +1,10 @@
+{
+  "network": "testnet",
+  "coin_name": "OrganicLifeCoin Testnet",
+  "coin_shortcut": "OLC",
+  "coin_label": "OrganicLifeCoin Testnet",
+  "rpc_port": 49718,
+  "zmq_port": 38349,
+  "xpub_magic": 69274641,
+  "slip44": 1
+}

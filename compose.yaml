@@ -1,0 +1,27 @@
+services:
+  blockbook:
+    build:
+      context: .
+      args:
+        VERSION: ${BLOCKBOOK_VERSION:-0.1.0}
+        VCS_REF: ${VCS_REF:-local}
+        BUILD_TIME: ${BUILD_TIME:-not-set}
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:${PUBLIC_PORT:-9130}:9130"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - blockbook-data:/data
+    tmpfs:
+      - /runtime:size=1m,mode=0700,uid=10001,gid=10001
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+volumes:
+  blockbook-data:

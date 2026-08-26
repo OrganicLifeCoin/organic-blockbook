@@ -1,0 +1,10 @@
+{
+  "network": "mainnet",
+  "coin_name": "OrganicLifeCoin",
+  "coin_shortcut": "OLC",
+  "coin_label": "OrganicLifeCoin",
+  "rpc_port": 43723,
+  "zmq_port": 38349,
+  "xpub_magic": 69274625,
+  "slip44": 5150
+}
