@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strings"
 
 	"encoding/binary"
 	"encoding/hex"
@@ -19,6 +20,7 @@ import (
 	"github.com/martinboehm/btcd/blockchain"
 	"github.com/martinboehm/btcd/wire"
 	"github.com/martinboehm/btcutil"
+	"github.com/martinboehm/btcutil/bech32"
 	"github.com/martinboehm/btcutil/chaincfg"
 	"github.com/martinboehm/btcutil/txscript"
 )
@@ -26,9 +28,9 @@ import (
 const (
 	// Net Magics (little-endian interpretation of the OrganicLifeCoin pchMessageStart)
 	// mainnet message start: f6 2f 01 8a
-	// testnet message start: a9 f2 5f e6
+	// testnet message start: 6b c4 02 11
 	MainnetMagic wire.BitcoinNet = 0x8a012ff6
-	TestnetMagic wire.BitcoinNet = 0xe65ff2a9
+	TestnetMagic wire.BitcoinNet = 0x1102c46b
 
 	// Opcodes
 	OP_IF                       = 0x63
@@ -134,6 +136,9 @@ func (p *PivXParser) ParseTx(b []byte) (*bchain.Tx, error) {
 	if err := t.Deserialize(r); err != nil {
 		return nil, err
 	}
+	if r.Len() != 0 {
+		return nil, errors.New("extended OrganicLifeCoin transaction requires verbose RPC decoding")
+	}
 	tx := p.TxFromMsgTx(&t, true)
 	tx.Hex = hex.EncodeToString(b)
 	return &tx, nil
@@ -228,6 +233,12 @@ func (p *PivXParser) ParseTxFromJson(msg json.RawMessage) (*bchain.Tx, error) {
 		if vout.ScriptPubKey.Addresses == nil {
 			vout.ScriptPubKey.Addresses = []string{}
 		}
+		if script, err := hex.DecodeString(vout.ScriptPubKey.Hex); err == nil && p.isPQScript(script) {
+			vout.ScriptPubKey.Addresses, _, err = p.outputScriptToAddresses(script)
+			if err != nil {
+				return nil, err
+			}
+		}
 
 		if vout.ScriptPubKey.Hex == "" {
 			if isCoinbaseTx(tx) {
@@ -243,6 +254,17 @@ func (p *PivXParser) ParseTxFromJson(msg json.RawMessage) (*bchain.Tx, error) {
 
 // outputScriptToAddresses converts ScriptPubKey to bitcoin addresses
 func (p *PivXParser) outputScriptToAddresses(script []byte) ([]string, bool, error) {
+	if p.isPQScript(script) {
+		data, err := bech32.ConvertBits(script[3:], 8, 5, true)
+		if err != nil {
+			return nil, false, err
+		}
+		address, err := encodeBech32m("olcpqtest", append([]byte{1}, data...))
+		if err != nil {
+			return nil, false, err
+		}
+		return []string{address}, true, nil
+	}
 	if isZeroCoinSpendScript(script) {
 		return []string{ZCSPEND_LABEL}, false, nil
 	}
@@ -261,6 +283,33 @@ func (p *PivXParser) outputScriptToAddresses(script []byte) ([]string, bool, err
 
 	rv, s, _ := p.BitcoinOutputScriptToAddressesFunc(script)
 	return rv, s, nil
+}
+
+func (p *PivXParser) isPQScript(script []byte) bool {
+	return p.Params.Net == TestnetMagic && len(script) == 35 && bytes.Equal(script[:3], []byte{0xff, 0x51, 0x20})
+}
+
+// GetAddrDescFromAddress preserves Core's canonical, testnet-only PQ encoding.
+func (p *PivXParser) GetAddrDescFromAddress(address string) (bchain.AddressDescriptor, error) {
+	if !strings.HasPrefix(strings.ToLower(address), "olcpq") {
+		return p.BitcoinParser.GetAddrDescFromAddress(address)
+	}
+	if p.Params.Net != TestnetMagic || len(address) != 69 {
+		return nil, errors.New("invalid PQ address network or length")
+	}
+	hrp, data, err := decodeBech32m(address)
+	if err != nil || hrp != "olcpqtest" || len(data) != 53 || data[0] != 1 {
+		return nil, errors.New("invalid PQ address encoding")
+	}
+	id, err := bech32.ConvertBits(data[1:], 5, 8, false)
+	if err != nil || len(id) != 32 {
+		return nil, errors.New("invalid PQ key identifier")
+	}
+	canonical, err := encodeBech32m(hrp, data)
+	if err != nil || canonical != address {
+		return nil, errors.New("noncanonical PQ address")
+	}
+	return append([]byte{0xff, 0x51, 0x20}, id...), nil
 }
 
 // IsAddrDescIndexable returns true if AddressDescriptor should be added to index

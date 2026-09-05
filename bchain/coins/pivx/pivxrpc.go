@@ -66,6 +66,11 @@ func (b *PivXRPC) Initialize() error {
 	return nil
 }
 
+// GetTransactionForMempool uses Core's full special-transaction decoder and txid.
+func (b *PivXRPC) GetTransactionForMempool(txid string) (*bchain.Tx, error) {
+	return b.GetTransaction(txid)
+}
+
 // GetBlock returns block with given hash.
 func (z *PivXRPC) GetBlock(hash string, height uint32) (*bchain.Block, error) {
 	var err error
@@ -110,34 +115,18 @@ func (z *PivXRPC) GetBlock(hash string, height uint32) (*bchain.Block, error) {
 	return block, nil
 }
 
-// getinfo
+// getsupplyinfo
 
-type CmdGetInfo struct {
+type CmdGetSupplyInfo struct {
 	Method string `json:"method"`
 }
 
-type ResGetInfo struct {
+type ResGetSupplyInfo struct {
 	Error  *bchain.RPCError `json:"error"`
 	Result struct {
 		TransparentSupply json.Number `json:"transparentsupply"`
 		ShieldSupply      json.Number `json:"shieldsupply"`
-		MoneySupply       json.Number `json:"moneysupply"`
-	} `json:"result"`
-}
-
-// getmasternodecount
-
-type CmdGetMasternodeCount struct {
-	Method string `json:"method"`
-}
-
-type ResGetMasternodeCount struct {
-	Error  *bchain.RPCError `json:"error"`
-	Result struct {
-		Total   int `json:"total"`
-		Stable  int `json:"stable"`
-		Enabled int `json:"enabled"`
-		InQueue int `json:"inqueue"`
+		TotalSupply       json.Number `json:"totalsupply"`
 	} `json:"result"`
 }
 
@@ -151,38 +140,26 @@ func (b *PivXRPC) GetNextSuperBlock(nHeight int) int {
 }
 
 // GetChainInfo returns information about the connected backend
-// PIVX adds Money Supply to btc implementation
+// PIVX adds money supply and governance-cycle information to the BTC implementation.
 func (b *PivXRPC) GetChainInfo() (*bchain.ChainInfo, error) {
 	rv, err := b.BitcoinGetChainInfo()
 	if err != nil {
 		return nil, err
 	}
 
-	glog.V(1).Info("rpc: getinfo")
+	glog.V(1).Info("rpc: getsupplyinfo")
 
-	resGi := ResGetInfo{}
-	err = b.Call(&CmdGetInfo{Method: "getinfo"}, &resGi)
+	resSupply := ResGetSupplyInfo{}
+	err = b.Call(&CmdGetSupplyInfo{Method: "getsupplyinfo"}, &resSupply)
 	if err != nil {
 		return nil, err
 	}
-	if resGi.Error != nil {
-		return nil, resGi.Error
+	if resSupply.Error != nil {
+		return nil, resSupply.Error
 	}
-	rv.TransparentSupply = resGi.Result.TransparentSupply
-	rv.ShieldSupply = resGi.Result.ShieldSupply
-	rv.MoneySupply = resGi.Result.MoneySupply
-
-	glog.V(1).Info("rpc: getmasternodecount")
-
-	resMc := ResGetMasternodeCount{}
-	err = b.Call(&CmdGetMasternodeCount{Method: "getmasternodecount"}, &resMc)
-	if err != nil {
-		return nil, err
-	}
-	if resMc.Error != nil {
-		return nil, resMc.Error
-	}
-	rv.MasternodeCount = resMc.Result.Enabled
+	rv.TransparentSupply = resSupply.Result.TransparentSupply
+	rv.ShieldSupply = resSupply.Result.ShieldSupply
+	rv.MoneySupply = resSupply.Result.TotalSupply
 
 	rv.NextSuperBlock = b.GetNextSuperBlock(rv.Headers)
 
