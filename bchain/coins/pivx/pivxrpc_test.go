@@ -6,8 +6,23 @@ package pivx
 import (
 	"blockbook/bchain"
 	"blockbook/bchain/coins/btc"
+	"encoding/json"
 	"testing"
 )
+
+func TestPQMasternodeCount(t *testing.T) {
+	count, err := pqMasternodeCount([]json.RawMessage{{}, {}}, nil)
+	if err != nil || count != 2 {
+		t.Fatalf("count = %d, err = %v", count, err)
+	}
+	count, err = pqMasternodeCount(nil, &bchain.RPCError{Code: -1, Message: "PQ masternodes are not active on this network"})
+	if err != nil || count != 0 {
+		t.Fatalf("inactive count = %d, err = %v", count, err)
+	}
+	if _, err = pqMasternodeCount(nil, &bchain.RPCError{Code: -1, Message: "stale registry"}); err == nil {
+		t.Fatal("unexpected registry errors must fail")
+	}
+}
 
 func TestGetNextSuperBlock(t *testing.T) {
 	tests := []struct {

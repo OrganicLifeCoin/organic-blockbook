@@ -11,6 +11,8 @@ The repository derives from Trezor Blockbook and the PIVX-compatible parser impl
 - REST API V1 and V2
 - WebSocket live updates
 - An integrated server-rendered explorer
+- Native `olcpq…` and `olcpqtest…` Bech32m address indexing
+- Full OLC PQ payload-aware transaction IDs and mempool parsing
 - OLC templates, styles, scripts, and images
 - A testnet-first container deployment
 
@@ -265,6 +267,6 @@ The complete test suite requires RocksDB `5.18.3` and its development headers. G
 
 This repository is based on [Trezor Blockbook](https://github.com/trezor/blockbook). The OLC parser derives from PIVX-compatible Blockbook work.
 
-OrganicLifeCoin contributors added OLC network parameters, shield-transaction support, deployment controls, and the integrated OLC explorer branding.
+OrganicLifeCoin contributors added OLC network parameters, PQ transaction and address support, deployment controls, and the integrated OLC explorer branding.
 
 The project uses the GNU Affero General Public License version 3. See [COPYING](COPYING) and [NOTICE](NOTICE).

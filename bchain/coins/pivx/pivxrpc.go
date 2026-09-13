@@ -4,6 +4,7 @@ import (
 	"blockbook/bchain"
 	"blockbook/bchain/coins/btc"
 	"encoding/json"
+	"strings"
 
 	"github.com/golang/glog"
 	"github.com/juju/errors"
@@ -127,18 +128,23 @@ type ResGetInfo struct {
 
 // getmasternodecount
 
-type CmdGetMasternodeCount struct {
+type CmdListPQMasternodes struct {
 	Method string `json:"method"`
 }
 
-type ResGetMasternodeCount struct {
-	Error  *bchain.RPCError `json:"error"`
-	Result struct {
-		Total   int `json:"total"`
-		Stable  int `json:"stable"`
-		Enabled int `json:"enabled"`
-		InQueue int `json:"inqueue"`
-	} `json:"result"`
+type ResListPQMasternodes struct {
+	Error  *bchain.RPCError  `json:"error"`
+	Result []json.RawMessage `json:"result"`
+}
+
+func pqMasternodeCount(records []json.RawMessage, rpcError *bchain.RPCError) (int, error) {
+	if rpcError == nil {
+		return len(records), nil
+	}
+	if strings.Contains(rpcError.Message, "PQ masternodes are not active") {
+		return 0, nil
+	}
+	return 0, rpcError
 }
 
 // GetNextSuperBlock returns the next superblock height after nHeight
@@ -172,17 +178,18 @@ func (b *PivXRPC) GetChainInfo() (*bchain.ChainInfo, error) {
 	rv.ShieldSupply = resGi.Result.ShieldSupply
 	rv.MoneySupply = resGi.Result.MoneySupply
 
-	glog.V(1).Info("rpc: getmasternodecount")
+	glog.V(1).Info("rpc: listpqmasternodes")
 
-	resMc := ResGetMasternodeCount{}
-	err = b.Call(&CmdGetMasternodeCount{Method: "getmasternodecount"}, &resMc)
+	resMc := ResListPQMasternodes{}
+	err = b.Call(&CmdListPQMasternodes{Method: "listpqmasternodes"}, &resMc)
 	if err != nil {
 		return nil, err
 	}
-	if resMc.Error != nil {
-		return nil, resMc.Error
+	masternodeCount, err := pqMasternodeCount(resMc.Result, resMc.Error)
+	if err != nil {
+		return nil, err
 	}
-	rv.MasternodeCount = resMc.Result.Enabled
+	rv.MasternodeCount = masternodeCount
 
 	rv.NextSuperBlock = b.GetNextSuperBlock(rv.Headers)
 

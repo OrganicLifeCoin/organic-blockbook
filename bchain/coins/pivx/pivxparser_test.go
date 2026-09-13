@@ -6,7 +6,11 @@ package pivx
 import (
 	"blockbook/bchain"
 	"blockbook/bchain/coins/btc"
+	"bytes"
+	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"math/big"
 	"os"
 	"reflect"
@@ -14,6 +18,41 @@ import (
 
 	"github.com/martinboehm/btcutil/chaincfg"
 )
+
+const testPQAddress = "olcpqtest1ppf0kwsev98fsffnp9hpe0chp509e7mvpgpzyd5erfslqtgsxkrls25pmyv"
+const testPQScript = "ff51200a5f67432c29d304a6612dc397e2e1a3cb9f6d81404446d3234c3e05a206b0ff"
+
+func testPQRawTransaction(t *testing.T) []byte {
+	t.Helper()
+	var raw bytes.Buffer
+	mustWrite := func(value interface{}) {
+		if err := binary.Write(&raw, binary.LittleEndian, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(int16(3))
+	mustWrite(int16(8))
+	raw.WriteByte(1)
+	raw.Write(bytes.Repeat([]byte{0x11}, 32))
+	mustWrite(uint32(0))
+	raw.WriteByte(0)
+	mustWrite(uint32(0xffffffff))
+	raw.WriteByte(1)
+	mustWrite(int64(100000000))
+	script, err := hex.DecodeString(testPQScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw.WriteByte(byte(len(script)))
+	raw.Write(script)
+	mustWrite(uint32(0))
+	raw.WriteByte(0) // no Sapling data
+	raw.WriteByte(1) // extra payload present
+	payload := append([]byte{1, 1, 1}, make([]byte, 1312+2420)...)
+	raw.Write([]byte{0xfd, 0x97, 0x0e})
+	raw.Write(payload)
+	return raw.Bytes()
+}
 
 func TestMain(m *testing.M) {
 	c := m.Run()
@@ -52,6 +91,69 @@ func Test_GetAddrDescFromAddress_Mainnet(t *testing.T) {
 				t.Errorf("GetAddrDescFromAddress() = %v, want %v", h, tt.want)
 			}
 		})
+	}
+}
+
+func TestPQAddressDescriptors(t *testing.T) {
+	parser := NewPivXParser(GetChainParams("test"), &btc.Configuration{})
+	descriptor, err := parser.GetAddrDescFromAddress(testPQAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hex.EncodeToString(descriptor); got != testPQScript {
+		t.Fatalf("descriptor = %s, want %s", got, testPQScript)
+	}
+	addresses, searchable, err := parser.GetAddressesFromAddrDesc(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !searchable || !reflect.DeepEqual(addresses, []string{testPQAddress}) {
+		t.Fatalf("addresses = %v, searchable = %v", addresses, searchable)
+	}
+}
+
+func TestParsePQTransactionIncludesPayloadInTxid(t *testing.T) {
+	parser := NewPivXParser(GetChainParams("test"), &btc.Configuration{})
+	raw := testPQRawTransaction(t)
+	tx, err := parser.ParseTx(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tx.Txid != "88e8aedd2d80c9b15df55b2989af019453b382ed4830aea8f4a5ed3372ca26b4" {
+		t.Fatalf("txid = %s", tx.Txid)
+	}
+	if tx.Version != 3 || len(tx.Vin) != 1 || len(tx.Vout) != 1 {
+		t.Fatalf("unexpected parsed transaction: %+v", tx)
+	}
+	if tx.Vout[0].ValueSat.Cmp(big.NewInt(100000000)) != 0 ||
+		!reflect.DeepEqual(tx.Vout[0].ScriptPubKey.Addresses, []string{testPQAddress}) {
+		t.Fatalf("unexpected PQ output: %+v", tx.Vout[0])
+	}
+	if tx.Hex != hex.EncodeToString(raw) {
+		t.Fatal("raw transaction hex was not preserved")
+	}
+}
+
+func TestParsePQTransactionRejectsTrailingAndTruncatedData(t *testing.T) {
+	parser := NewPivXParser(GetChainParams("test"), &btc.Configuration{})
+	raw := testPQRawTransaction(t)
+	for _, invalid := range [][]byte{raw[:len(raw)-1], append(append([]byte{}, raw...), 0)} {
+		if _, err := parser.ParseTx(invalid); err == nil {
+			t.Fatal("invalid PQ transaction was accepted")
+		}
+	}
+}
+
+func TestParsePQTransactionFromCoreJSONAddsAddress(t *testing.T) {
+	parser := NewPivXParser(GetChainParams("test"), &btc.Configuration{})
+	body := json.RawMessage(fmt.Sprintf(`{"txid":"%s","version":3,"locktime":0,"vin":[],"vout":[{"value":1,"n":0,"scriptPubKey":{"hex":"%s"}}]}`,
+		"88e8aedd2d80c9b15df55b2989af019453b382ed4830aea8f4a5ed3372ca26b4", testPQScript))
+	tx, err := parser.ParseTxFromJson(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(tx.Vout[0].ScriptPubKey.Addresses, []string{testPQAddress}) {
+		t.Fatalf("addresses = %v", tx.Vout[0].ScriptPubKey.Addresses)
 	}
 }
 

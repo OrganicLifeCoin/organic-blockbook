@@ -129,6 +129,9 @@ func (p *PivXParser) UnpackTx(buf []byte) (*bchain.Tx, uint32, error) {
 
 // ParseTx parses byte array containing transaction and returns Tx struct
 func (p *PivXParser) ParseTx(b []byte) (*bchain.Tx, error) {
+	if isPQTransaction(b) {
+		return p.parsePQTransaction(b)
+	}
 	t := wire.MsgTx{}
 	r := bytes.NewReader(b)
 	if err := t.Deserialize(r); err != nil {
@@ -228,6 +231,15 @@ func (p *PivXParser) ParseTxFromJson(msg json.RawMessage) (*bchain.Tx, error) {
 		if vout.ScriptPubKey.Addresses == nil {
 			vout.ScriptPubKey.Addresses = []string{}
 		}
+		if len(vout.ScriptPubKey.Addresses) == 0 && vout.ScriptPubKey.Hex != "" {
+			script, decodeErr := hex.DecodeString(vout.ScriptPubKey.Hex)
+			if decodeErr == nil {
+				addresses, _, addressErr := p.outputScriptToAddresses(script)
+				if addressErr == nil && len(addresses) > 0 {
+					vout.ScriptPubKey.Addresses = addresses
+				}
+			}
+		}
 
 		if vout.ScriptPubKey.Hex == "" {
 			if isCoinbaseTx(tx) {
@@ -243,6 +255,9 @@ func (p *PivXParser) ParseTxFromJson(msg json.RawMessage) (*bchain.Tx, error) {
 
 // outputScriptToAddresses converts ScriptPubKey to bitcoin addresses
 func (p *PivXParser) outputScriptToAddresses(script []byte) ([]string, bool, error) {
+	if address, ok := pqAddressFromScript(script, p.pqHRP()); ok {
+		return []string{address}, true, nil
+	}
 	if isZeroCoinSpendScript(script) {
 		return []string{ZCSPEND_LABEL}, false, nil
 	}
@@ -261,6 +276,24 @@ func (p *PivXParser) outputScriptToAddresses(script []byte) ([]string, bool, err
 
 	rv, s, _ := p.BitcoinOutputScriptToAddressesFunc(script)
 	return rv, s, nil
+}
+
+// GetAddrDescFromAddress supports the native Bech32m PQ address in addition
+// to the inherited transparent address formats.
+func (p *PivXParser) GetAddrDescFromAddress(address string) (bchain.AddressDescriptor, error) {
+	if err := bchain.ValidateAddressLength(address); err != nil {
+		return nil, err
+	}
+	if script, err := pqScriptFromAddress(address, p.pqHRP()); err == nil {
+		return script, nil
+	}
+	return p.BitcoinParser.GetAddrDescFromAddress(address)
+}
+
+// GetAddressesFromAddrDesc performs the inverse conversion for indexed PQ
+// scripts while retaining the existing transparent and cold-stake behavior.
+func (p *PivXParser) GetAddressesFromAddrDesc(addrDesc bchain.AddressDescriptor) ([]string, bool, error) {
+	return p.outputScriptToAddresses(addrDesc)
 }
 
 // IsAddrDescIndexable returns true if AddressDescriptor should be added to index
