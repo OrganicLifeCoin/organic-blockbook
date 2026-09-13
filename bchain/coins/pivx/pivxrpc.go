@@ -111,18 +111,19 @@ func (z *PivXRPC) GetBlock(hash string, height uint32) (*bchain.Block, error) {
 	return block, nil
 }
 
-// getinfo
+// getsupplyinfo
 
-type CmdGetInfo struct {
+type CmdGetSupplyInfo struct {
 	Method string `json:"method"`
+	Params []bool `json:"params"`
 }
 
-type ResGetInfo struct {
+type ResGetSupplyInfo struct {
 	Error  *bchain.RPCError `json:"error"`
 	Result struct {
 		TransparentSupply json.Number `json:"transparentsupply"`
 		ShieldSupply      json.Number `json:"shieldsupply"`
-		MoneySupply       json.Number `json:"moneysupply"`
+		TotalSupply       json.Number `json:"totalsupply"`
 	} `json:"result"`
 }
 
@@ -164,19 +165,19 @@ func (b *PivXRPC) GetChainInfo() (*bchain.ChainInfo, error) {
 		return nil, err
 	}
 
-	glog.V(1).Info("rpc: getinfo")
+	glog.V(1).Info("rpc: getsupplyinfo")
 
-	resGi := ResGetInfo{}
-	err = b.Call(&CmdGetInfo{Method: "getinfo"}, &resGi)
+	resSi := ResGetSupplyInfo{}
+	err = b.Call(&CmdGetSupplyInfo{Method: "getsupplyinfo", Params: []bool{false}}, &resSi)
 	if err != nil {
 		return nil, err
 	}
-	if resGi.Error != nil {
-		return nil, resGi.Error
+	if resSi.Error != nil {
+		return nil, resSi.Error
 	}
-	rv.TransparentSupply = resGi.Result.TransparentSupply
-	rv.ShieldSupply = resGi.Result.ShieldSupply
-	rv.MoneySupply = resGi.Result.MoneySupply
+	rv.TransparentSupply = resSi.Result.TransparentSupply
+	rv.ShieldSupply = resSi.Result.ShieldSupply
+	rv.MoneySupply = resSi.Result.TotalSupply
 
 	glog.V(1).Info("rpc: listpqmasternodes")
 
